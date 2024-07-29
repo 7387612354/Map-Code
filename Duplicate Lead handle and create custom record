@@ -1,0 +1,70 @@
+public class LeadDuplicateHelper 
+{
+    public static void handleDuplicateLeads(List<Lead> newLeads){        
+        Set<String> emailSet = new Set<String>();
+        Map<string,List<lead>> newMapOfDupicateRecord = New Map<string,List<lead>>(); //5 uv@gm.com
+        for (Lead lead : newLeads){
+            emailSet.add(lead.Email);   
+            if(newMapOfDupicateRecord.containsKey(lead.Email)) {
+                List<lead> usersId = newMapOfDupicateRecord.get(lead.Email);
+                usersId.add(lead);
+                newMapOfDupicateRecord.put(lead.Email, usersId);
+            } else {
+                newMapOfDupicateRecord.put(lead.Email, new List<lead> { lead });
+            }
+        }        
+        
+        Map<String, List<Lead>> existingEmailMap = new Map<String, List<Lead>>();
+        
+        for (Lead existingLead : [SELECT Id, Email, Name, LeadSource,createddate FROM Lead WHERE Email IN :newMapOfDupicateRecord.keyset() ORDER BY CreatedDate ASC]){
+            system.debug('existingLead   '+existingLead);
+             if(existingEmailMap.containsKey(existingLead.Email)) {
+                List<Lead> usersId = existingEmailMap.get(existingLead.Email);
+                usersId.add(existingLead);
+                existingEmailMap.put(existingLead.Email, usersId);
+            } else {
+                existingEmailMap.put(existingLead.Email, new List<Lead> { existingLead });
+            }
+        }
+        
+        List<Id> leadsToDelete = new List<Id>();
+        List<Duplicate_Error__c> errorRecords = new List<Duplicate_Error__c>();
+        
+        for(String emailVal :existingEmailMap.keyset()){
+            if(existingEmailMap.get(emailVal).size() > 1){
+                for (Lead duplicateLead : newMapOfDupicateRecord.get(emailVal)) {
+                    Duplicate_Error__c errorRecord = new Duplicate_Error__c();
+                    errorRecord.Email__c = duplicateLead.Email;
+                    errorRecord.Lead__c = existingEmailMap.get(emailVal)[0].Id;
+                    errorRecord.Lead_Source__c = duplicateLead.LeadSource;
+                    errorRecord.Lead_Name__c = duplicateLead.Name;
+                    errorRecord.Error_Message__c = 'Duplicate Lead found: ' + duplicateLead.Email;
+                    errorRecords.add(errorRecord);
+                    System.debug('Created Duplicate_Error__c record for Lead ID: ' + duplicateLead.Id);
+                    leadsToDelete.add(duplicateLead.Id);
+                }              
+            }
+        }
+        
+         // Insert Duplicate_Error__c records
+        try{
+            if (!errorRecords.isEmpty()){
+                insert errorRecords;
+                System.debug('Successfully inserted Duplicate_Error__c records: ' + errorRecords);
+            }
+        } catch (Exception e){
+            System.debug('Error inserting Duplicate_Error__c records: ' + e.getMessage());
+        }
+        
+        if (!leadsToDelete.isEmpty()){
+            try{
+                Database.delete(leadsToDelete);
+                System.debug('Successfully deleted duplicate leads: ' + leadsToDelete);
+                Database.emptyRecycleBin(leadsToDelete);
+            }catch (Exception e){
+                System.debug('Error deleting duplicate leads: ' + e.getMessage());
+            }
+        }                
+    }
+   
+}
